@@ -1599,6 +1599,9 @@ void AMSMaterialsSetting::get_filaments_info(const MachineObject*               
 
     auto collect_pass = [&](bool want_system) {
         std::set<std::string> filament_id_set; // Deduplicate by filament_id.
+        // Separate dedup for the selectable list: a hidden variant seen first must not
+        // block a visible variant of the same filament.
+        std::set<std::string> listed_filament_id_set;
         for (auto filament_it = filaments.begin(); filament_it != filaments.end(); ++filament_it) {
             Preset& preset = *filament_it;
             // Skip non-root presets.
@@ -1618,13 +1621,20 @@ void AMSMaterialsSetting::get_filaments_info(const MachineObject*               
                 if (printer_names.find(printer_str) == printer_names.end()) continue;
                 // This preset is compatible with the current printer. Append it to the out containers, if not duplicated.
                 if (filament_it->filament_id.empty()) break;
-                if (!filament_id_set.insert(filament_it->filament_id).second) break;
 
                 auto fialment_alias = filaments.get_preset_alias(preset, true);
-                if (fialment_alias.empty()) break;
 
-                filament_items.push_back(from_u8(fialment_alias));
-                _collect_filament_info(fialment_alias, preset, query_filament_vendors, query_filament_types);
+                // Only filaments enabled in the Add/Remove filaments dialog are selectable.
+                if (preset.is_visible && !fialment_alias.empty() &&
+                    listed_filament_id_set.insert(filament_it->filament_id).second) {
+                    filament_items.push_back(from_u8(fialment_alias));
+                    _collect_filament_info(fialment_alias, preset, query_filament_vendors, query_filament_types);
+                }
+
+                // Hidden filaments still go into the lookup map so the filament currently
+                // loaded in the tray (e.g. read via RFID) is still recognized.
+                if (!filament_id_set.insert(filament_it->filament_id).second) break;
+                if (fialment_alias.empty()) break;
 
                 FilamentInfos filament_infos;
                 filament_infos.filament_id         = filament_it->filament_id;

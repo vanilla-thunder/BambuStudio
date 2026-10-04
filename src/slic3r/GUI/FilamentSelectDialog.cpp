@@ -943,23 +943,20 @@ void FilamentSelectDialog::fill_default_tab()
         m_brand_to_aliases[vendor].push_back(alias);
     }
 
-    static const std::vector<wxString> type_order{ "PLA", "PETG", "ABS", "TPU" };
-    for (auto& kv : m_brand_to_aliases) {
-        std::sort(kv.second.begin(), kv.second.end(), [this](const wxString& l, const wxString& r) {
-            wxString lt, rt;
-            auto il = m_types.find(l), ir = m_types.find(r);
-            if (il != m_types.end()) lt = il->second;
-            if (ir != m_types.end()) rt = ir->second;
-            auto i1 = std::find(type_order.begin(), type_order.end(), lt);
-            auto i2 = std::find(type_order.begin(), type_order.end(), rt);
-            if (i1 != i2) return i1 < i2;
-            return l < r;
-        });
-    }
+    // Case-insensitive alphabetical order for both brands and materials.
+    auto alpha_less = [](const wxString& l, const wxString& r) {
+        const int c = l.CmpNoCase(r);
+        return c != 0 ? c < 0 : l < r;
+    };
+    for (auto& kv : m_brand_to_aliases)
+        std::sort(kv.second.begin(), kv.second.end(), alpha_less);
 
-    std::vector<wxString> keys;
-    for (auto& kv : m_brand_to_aliases) keys.push_back(kv.first);
-    m_ordered_brands = order_brands(keys, other);
+    m_ordered_brands.clear();
+    for (auto& kv : m_brand_to_aliases)
+        if (kv.first != other) m_ordered_brands.push_back(kv.first);
+    std::sort(m_ordered_brands.begin(), m_ordered_brands.end(), alpha_less);
+    // "Other" collects presets without a vendor; keep it last.
+    if (m_brand_to_aliases.count(other)) m_ordered_brands.push_back(other);
 
     for (const wxString& b : m_ordered_brands) {
         auto* row = new wxPanel(m_brand_list, wxID_ANY);
