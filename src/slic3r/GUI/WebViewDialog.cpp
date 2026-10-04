@@ -792,6 +792,10 @@ void WebViewPanel::SendDesignStaffpick(bool on)
 
     BOOST_LOG_TRIVIAL(info) << "Begin SendDesignStaffpick: " << nInterval;
 
+    // Online Models are removed from the home page: always take the "off" path,
+    // which clears the model list and hides the left-menu entry.
+    on = false;
+
     try {
         if (on) {
             std::string sguide = wxGetApp().app_config->get("firstguide", "finish");
@@ -981,6 +985,10 @@ void WebViewPanel::get_academy_list()
 
 void WebViewPanel::SendMakerlabList(  )
 {
+    // MakerLab is removed from the home page: never fetch the list, so neither the
+    // left-menu entry nor the home page section is ever shown.
+    return;
+
     try {
         std::string sguide = wxGetApp().app_config->get("firstguide", "finish");
         if (sguide != "true") return;

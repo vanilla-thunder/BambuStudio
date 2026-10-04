@@ -1304,8 +1304,7 @@ void GUI_App::post_init()
             BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << "Found glcontext not ready, postpone the init";
         }
 //#endif
-        if (is_editor())
-            mainframe->select_tab(size_t(0));
+        // Start on the Prepare tab (selected above for the OpenGL init) instead of Home.
         mainframe->Thaw();
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ", end load_gl_resources";
     }
