@@ -1697,7 +1697,8 @@ wxWindow *PreferencesDialog::create_other_tab()
     auto update_modelmall = [scrolled, title_modelmall_item, item_modelmall_item, item_show_history_item](wxEvent &) {
         bool has_model_mall = wxGetApp().has_model_mall();
         title_modelmall_item->Show(has_model_mall);
-        item_modelmall_item->Show(has_model_mall);
+        // Online Models are removed from the home page, so this switch has no effect.
+        item_modelmall_item->Show(false);
         item_show_history_item->Show(has_model_mall);
         scrolled->Layout();
         scrolled->FitInside();
