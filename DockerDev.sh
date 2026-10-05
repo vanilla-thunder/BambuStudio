@@ -7,6 +7,7 @@
 #
 # Usage: ./DockerDev.sh build    configure (first time) and compile
 #        ./DockerDev.sh run      start the GUI (X11/Wayland of the host, e.g. WSLg)
+#                                DEBUG=1 prints a stack trace on crash or non-zero exit
 #        ./DockerDev.sh shell    interactive shell in the build environment
 
 set -e
@@ -60,13 +61,21 @@ cmd_build() {
 
 cmd_run() {
     prepare_home
+    local preload=""
+    if [ "${DEBUG}" = 1 ]; then
+        # Stack trace on non-zero exit or fatal signal (gdb is unusable: the network plugin
+        # traps when a debugger is attached).
+        docker run "${common_args[@]}" "${IMAGE}" \
+            gcc -shared -fPIC -O1 -o ${BUILD_DIR}/exit_trace.so docker/exit_trace.c -ldl
+        preload="-e LD_PRELOAD=/BambuStudio/${BUILD_DIR}/exit_trace.so"
+    fi
     local display_args=(-e DISPLAY -e WAYLAND_DISPLAY -e XDG_RUNTIME_DIR -e PULSE_SERVER
                         -v /tmp/.X11-unix:/tmp/.X11-unix)
     # WSLg keeps its sockets under /mnt/wslg.
     [ -d /mnt/wslg ] && display_args+=(-v /mnt/wslg:/mnt/wslg -e XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir)
     docker run "${common_args[@]}" \
         --net=host --ipc=host \
-        "${display_args[@]}" \
+        "${display_args[@]}" ${preload} \
         -e LC_ALL=C \
         -e SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
         -e LD_LIBRARY_PATH=/BambuStudio/${BUILD_DIR}/src \
@@ -82,5 +91,5 @@ case "$1" in
     build) cmd_build ;;
     run)   shift; cmd_run "$@" ;;
     shell) cmd_shell ;;
-    *)     sed -n '2,11p' "$0"; exit 1 ;;
+    *)     sed -n '2,12p' "$0"; exit 1 ;;
 esac
