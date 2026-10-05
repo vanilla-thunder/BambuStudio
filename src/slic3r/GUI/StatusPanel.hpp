@@ -447,6 +447,18 @@ protected:
     CameraFullscreenFrame *m_camera_fullscreen_frame{ nullptr };
     wxPanel *m_camera_placeholder{ nullptr };
 
+    // Responsive layout: when the two columns no longer fit, the controls pane moves
+    // below the printing pane and the camera view takes the full width.
+    wxBoxSizer *m_status_below_sizer{ nullptr };
+    wxBoxSizer *m_left_column_sizer{ nullptr };
+    wxPanel    *m_panel_separator_middle{ nullptr };
+    wxPanel    *m_panel_separator_stacked{ nullptr };
+    bool        m_stacked_layout{ false };
+    bool        m_updating_layout{ false };
+    double      m_layout_video_aspect{ 0.0 };
+    void        on_status_size(wxSizeEvent &event);
+    void        update_responsive_layout(bool video_only = false);
+
     wxBitmap m_bitmap_camera;
     ScalableBitmap m_bitmap_sdcard_state_normal;
     ScalableBitmap m_bitmap_sdcard_state_abnormal;

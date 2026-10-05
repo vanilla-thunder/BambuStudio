@@ -1977,6 +1977,8 @@ StatusBasePanel::StatusBasePanel(wxWindow *parent, wxWindowID id, const wxPoint 
     bSizer_status_below->Add(m_panel_separotor_left, 0, wxEXPAND | wxALL, 0);
 
     wxBoxSizer *bSizer_left = new wxBoxSizer(wxVERTICAL);
+    m_status_below_sizer    = bSizer_status_below;
+    m_left_column_sizer     = bSizer_left;
 
     auto m_monitoring_sizer = create_monitoring_page();
     bSizer_left->Add(m_monitoring_sizer, 1, wxEXPAND | wxALL, 0);
@@ -1998,7 +2000,7 @@ StatusBasePanel::StatusBasePanel(wxWindow *parent, wxWindowID id, const wxPoint 
 
     bSizer_status_below->Add(bSizer_left, 1, wxALL | wxEXPAND, 0);
 
-    auto m_panel_separator_middle = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE | wxTAB_TRAVERSAL);
+    m_panel_separator_middle = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE | wxTAB_TRAVERSAL);
     m_panel_separator_middle->SetBackgroundColour(STATUS_PANEL_BG);
     m_panel_separator_middle->SetMinSize(wxSize(PAGE_SPACING, -1));
 
@@ -2014,6 +2016,12 @@ StatusBasePanel::StatusBasePanel(wxWindow *parent, wxWindowID id, const wxPoint 
 
     bSizer_status_below->Add(m_machine_ctrl_panel, 0, wxALL, 0);
 
+    // Gap between the printing and the controls pane, used only in the stacked layout.
+    m_panel_separator_stacked = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(-1, PAGE_SPACING), wxTAB_TRAVERSAL);
+    m_panel_separator_stacked->SetBackgroundColour(STATUS_PANEL_BG);
+    m_panel_separator_stacked->SetMinSize(wxSize(-1, PAGE_SPACING));
+    m_panel_separator_stacked->Hide();
+
     m_panel_separator_right = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(PAGE_SPACING, -1), wxTAB_TRAVERSAL);
     m_panel_separator_right->SetBackgroundColour(STATUS_PANEL_BG);
 
@@ -2027,6 +2035,80 @@ StatusBasePanel::StatusBasePanel(wxWindow *parent, wxWindowID id, const wxPoint 
     bSizer_status->Add(m_panel_separotor_bottom, 0, wxEXPAND | wxALL, 0);
     this->SetSizerAndFit(bSizer_status);
     this->Layout();
+    // SetSizerAndFit() made the content size the minimum size, which propagates up to the
+    // main frame and blocks resizing it. Keep a small minimum and let the panel scroll.
+    this->SetMinSize(wxSize(PAGE_MIN_WIDTH + 2 * PAGE_SPACING, FromDIP(300)));
+
+    Bind(wxEVT_SIZE, &StatusBasePanel::on_status_size, this);
+}
+
+void StatusBasePanel::on_status_size(wxSizeEvent &event)
+{
+    event.Skip();
+    update_responsive_layout();
+}
+
+void StatusBasePanel::update_responsive_layout(bool video_only)
+{
+    if (m_updating_layout || !m_status_below_sizer || !m_left_column_sizer || !m_machine_ctrl_panel) return;
+
+    // Status updates arrive continuously; they only need to react to a new stream aspect ratio.
+    double aspect = 9.0 / 16.0; // until the first frame is known
+    if (m_media_ctrl) {
+        const wxSize video_size = m_media_ctrl->GetVideoSize();
+        if (video_size.x > 0 && video_size.y > 0) aspect = double(video_size.y) / video_size.x;
+    }
+    if (video_only && aspect == m_layout_video_aspect) return;
+    m_layout_video_aspect = aspect;
+
+    m_updating_layout = true;
+
+    // Use the outer width with a vertical scrollbar always reserved: the client width shrinks
+    // whenever the scrollbar appears, which would feed back into the camera height and loop.
+    const int width = GetSize().GetWidth() - wxSystemSettings::GetMetric(wxSYS_VSCROLL_X, this);
+
+    bool changed = false;
+    if (!video_only) {
+        const int ctrl_width = m_machine_ctrl_panel->GetBestSize().GetWidth();
+        // Breakpoint: the camera/printing column at its minimum width plus the controls pane.
+        const bool stacked = width < PAGE_MIN_WIDTH + ctrl_width + 3 * PAGE_SPACING;
+        if (stacked != m_stacked_layout) {
+            m_stacked_layout = stacked;
+            changed          = true;
+            if (stacked) {
+                m_status_below_sizer->Detach(m_machine_ctrl_panel);
+                m_left_column_sizer->Add(m_panel_separator_stacked, 0, wxEXPAND, 0);
+                m_left_column_sizer->Add(m_machine_ctrl_panel, 0, wxEXPAND, 0);
+                m_panel_separator_stacked->Show();
+                m_panel_separator_middle->Hide();
+            } else {
+                m_left_column_sizer->Detach(m_machine_ctrl_panel);
+                m_left_column_sizer->Detach(m_panel_separator_stacked);
+                m_panel_separator_stacked->Hide();
+                m_panel_separator_middle->Show();
+                // Back between the middle and the right separator.
+                const int pos = m_status_below_sizer->GetItemCount() - 1;
+                m_status_below_sizer->Insert(pos, m_machine_ctrl_panel, 0, wxALL, 0);
+            }
+        }
+    }
+
+    // Stacked: the camera spans the full width, so grow its height to keep the stream's
+    // aspect ratio. Skipped while the video is shown in the fullscreen frame.
+    if (m_media_ctrl && !is_camera_fullscreen()) {
+        const int video_width  = std::max(width - 2 * PAGE_SPACING, PAGE_MIN_WIDTH);
+        const int video_height = m_stacked_layout ? std::max(int(video_width * aspect), FromDIP(288)) : FromDIP(288);
+        if (m_media_ctrl->GetMinSize().GetHeight() != video_height) {
+            m_media_ctrl->SetMinSize(wxSize(PAGE_MIN_WIDTH, video_height));
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        Layout();
+        FitInside();
+    }
+    m_updating_layout = false;
 }
 
 StatusBasePanel::~StatusBasePanel()
@@ -3577,6 +3659,9 @@ void StatusPanel::update(MachineObject *obj)
         m_nozzle_btn_panel->Disable();
         return;
     }
+
+    // The stream's aspect ratio is only known once it plays; re-check the camera height.
+    update_responsive_layout(true);
 
     // m_project_task_panel->Freeze();
     update_subtask(obj);
